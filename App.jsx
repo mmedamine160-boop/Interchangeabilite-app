@@ -35,9 +35,10 @@ function nowLabel() {
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function buildMailtoUrl(service, comment, sourceEmail) {
-  const subject = `Alerte production · ${service.name}`;
-  const body = `Bonjour,\n\nLa production signale un problème concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
+function buildMailtoUrl(service, comment, sourceEmail, priority = "normal") {
+  const prefix = priority === "urgent" ? "🔴 URGENT · " : "";
+  const subject = `${prefix}Alerte production · ${service.name}`;
+  const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
   const to = service.emails.join(",");
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -58,8 +59,34 @@ function StatusLed({ active }) {
   );
 }
 
+function PrioritySelector({ priority, onChange }) {
+  return (
+    <div className="flex gap-2 mb-4">
+      {[
+        { value: "normal", label: "Normal" },
+        { value: "urgent", label: "🔴 Urgent" },
+      ].map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className="flex-1 py-2 rounded text-sm font-semibold"
+          style={{
+            background: priority === opt.value ? (opt.value === "urgent" ? COLORS.redDim : COLORS.tealDim) : "transparent",
+            border: `1px solid ${priority === opt.value ? (opt.value === "urgent" ? COLORS.red : COLORS.teal) : COLORS.panelBorder}`,
+            color: priority === opt.value ? (opt.value === "urgent" ? COLORS.red : COLORS.teal) : COLORS.textDim,
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AlertModal({ service, sourceEmail, onClose, onSend }) {
   const [comment, setComment] = useState("");
+  const [priority, setPriority] = useState("normal");
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -107,6 +134,11 @@ function AlertModal({ service, sourceEmail, onClose, onSend }) {
         </div>
 
         <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
+          Priorité
+        </label>
+        <PrioritySelector priority={priority} onChange={setPriority} />
+
+        <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
           Décrivez le problème rencontré en production
         </label>
         <textarea
@@ -134,8 +166,8 @@ function AlertModal({ service, sourceEmail, onClose, onSend }) {
             disabled={!comment.trim()}
             onClick={() => {
               const trimmed = comment.trim();
-              window.open(buildMailtoUrl(service, trimmed, sourceEmail), "_self");
-              onSend(trimmed);
+              window.open(buildMailtoUrl(service, trimmed, sourceEmail, priority), "_self");
+              onSend(trimmed, priority);
             }}
             className="px-5 py-2 rounded text-sm font-semibold"
             style={{
@@ -428,10 +460,11 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
   );
 }
 
-function buildMultiMailtoUrl(services, comment, sourceEmail) {
+function buildMultiMailtoUrl(services, comment, sourceEmail, priority = "normal") {
   const names = services.map((s) => s.name).join(", ");
-  const subject = `Alerte production · ${names}`;
-  const body = `Bonjour,\n\nLa production signale un problème concernant : ${names}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
+  const prefix = priority === "urgent" ? "🔴 URGENT · " : "";
+  const subject = `${prefix}Alerte production · ${names}`;
+  const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${names}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
   const allEmails = [...new Set(services.flatMap((s) => s.emails))];
   const to = allEmails.join(",");
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -439,6 +472,7 @@ function buildMultiMailtoUrl(services, comment, sourceEmail) {
 
 function MultiAlertModal({ services, sourceEmail, onClose, onFinish }) {
   const [comment, setComment] = useState("");
+  const [priority, setPriority] = useState("normal");
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -449,8 +483,8 @@ function MultiAlertModal({ services, sourceEmail, onClose, onFinish }) {
 
   function handleSend() {
     const trimmed = comment.trim();
-    window.open(buildMultiMailtoUrl(services, trimmed, sourceEmail), "_self");
-    onFinish(trimmed);
+    window.open(buildMultiMailtoUrl(services, trimmed, sourceEmail, priority), "_self");
+    onFinish(trimmed, priority);
   }
 
   return (
@@ -488,6 +522,11 @@ function MultiAlertModal({ services, sourceEmail, onClose, onFinish }) {
             </span>
           </div>
         </div>
+
+        <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
+          Priorité
+        </label>
+        <PrioritySelector priority={priority} onChange={setPriority} />
 
         <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
           Décrivez le problème rencontré en production
@@ -625,6 +664,9 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [multiAlertServices, setMultiAlertServices] = useState(null);
   const [toast, setToast] = useState(null);
+  const [filterService, setFilterService] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterPriority, setFilterPriority] = useState("all");
 
   function toggleSelect(id) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -704,7 +746,7 @@ export default function App() {
   const alertsByService = (id) => log.filter((l) => l.serviceId === id && l.status === "nouveau").length;
   const isActive = (id) => alertsByService(id) > 0;
 
-  function handleSend(comment) {
+  function handleSend(comment, priority = "normal") {
     const entry = {
       id: Date.now(),
       serviceId: modalService.id,
@@ -712,6 +754,7 @@ export default function App() {
       comment,
       time: nowLabel(),
       status: "nouveau",
+      priority,
     };
     pushState({ log: [entry, ...log].slice(0, 200) });
     setToast(
@@ -723,7 +766,7 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   }
 
-  function handleMultiAlertFinish(comment) {
+  function handleMultiAlertFinish(comment, priority = "normal") {
     const time = nowLabel();
     const entries = multiAlertServices.map((s, i) => ({
       id: Date.now() + i,
@@ -732,6 +775,7 @@ export default function App() {
       comment,
       time,
       status: "nouveau",
+      priority,
     }));
     pushState({ log: [...entries, ...log].slice(0, 200) });
     setToast(`Application mail ouverte vers ${multiAlertServices.length} services`);
@@ -840,60 +884,134 @@ export default function App() {
           >
             Historique des alertes
           </h2>
-          {log.length === 0 ? (
-            <div
-              className="rounded p-6 text-sm text-center"
-              style={{ background: COLORS.panel, border: `1px dashed ${COLORS.panelBorder}`, color: COLORS.textDim }}
-            >
-              Aucune alerte envoyée pour le moment.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {log.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="rounded p-3 flex items-start gap-3"
-                  style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}
-                >
-                  <StatusLed active={entry.status === "nouveau"} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold" style={{ color: COLORS.text }}>
-                        {entry.serviceName}
-                      </span>
-                      <span
-                        className="text-[11px]"
-                        style={{ color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}
-                      >
-                        {entry.time}
-                      </span>
-                      <span
-                        className="text-[11px] px-2 py-0.5 rounded-full"
-                        style={{
-                          color: entry.status === "nouveau" ? COLORS.red : COLORS.teal,
-                          background: entry.status === "nouveau" ? COLORS.redDim : COLORS.tealDim,
-                        }}
-                      >
-                        {entry.status}
-                      </span>
-                    </div>
-                    <p className="text-sm mt-1 break-words" style={{ color: COLORS.textDim }}>
-                      {entry.comment}
-                    </p>
-                  </div>
-                  {entry.status === "nouveau" && (
-                    <button
-                      onClick={() => resolveEntry(entry.id)}
-                      className="text-xs px-3 py-1.5 rounded self-center"
-                      style={{ border: `1px solid ${COLORS.panelBorder}`, color: COLORS.textDim }}
-                    >
-                      Marquer traité
-                    </button>
-                  )}
-                </div>
-              ))}
+
+          {log.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              <select
+                value={filterService}
+                onChange={(e) => setFilterService(e.target.value)}
+                className="rounded px-2 py-1.5 text-xs focus:outline-none"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+              >
+                <option value="all">Tous les services</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="rounded px-2 py-1.5 text-xs focus:outline-none"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="nouveau">Nouveau</option>
+                <option value="traité">Traité</option>
+              </select>
+              <select
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="rounded px-2 py-1.5 text-xs focus:outline-none"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+              >
+                <option value="all">Toutes priorités</option>
+                <option value="urgent">🔴 Urgent</option>
+                <option value="normal">Normal</option>
+              </select>
             </div>
           )}
+
+          {(() => {
+            const filteredLog = log.filter(
+              (entry) =>
+                (filterService === "all" || entry.serviceId === filterService) &&
+                (filterStatus === "all" || entry.status === filterStatus) &&
+                (filterPriority === "all" || (entry.priority ?? "normal") === filterPriority)
+            );
+
+            if (log.length === 0) {
+              return (
+                <div
+                  className="rounded p-6 text-sm text-center"
+                  style={{ background: COLORS.panel, border: `1px dashed ${COLORS.panelBorder}`, color: COLORS.textDim }}
+                >
+                  Aucune alerte envoyée pour le moment.
+                </div>
+              );
+            }
+
+            if (filteredLog.length === 0) {
+              return (
+                <div
+                  className="rounded p-6 text-sm text-center"
+                  style={{ background: COLORS.panel, border: `1px dashed ${COLORS.panelBorder}`, color: COLORS.textDim }}
+                >
+                  Aucune alerte ne correspond à ces filtres.
+                </div>
+              );
+            }
+
+            return (
+              <div className="flex flex-col gap-2">
+                {filteredLog.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded p-3 flex items-start gap-3"
+                    style={{
+                      background: COLORS.panel,
+                      border: `1px solid ${entry.priority === "urgent" ? COLORS.red : COLORS.panelBorder}`,
+                    }}
+                  >
+                    <StatusLed active={entry.status === "nouveau"} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold" style={{ color: COLORS.text }}>
+                          {entry.serviceName}
+                        </span>
+                        {entry.priority === "urgent" && (
+                          <span
+                            className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                            style={{ color: COLORS.red, background: COLORS.redDim }}
+                          >
+                            🔴 Urgent
+                          </span>
+                        )}
+                        <span
+                          className="text-[11px]"
+                          style={{ color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}
+                        >
+                          {entry.time}
+                        </span>
+                        <span
+                          className="text-[11px] px-2 py-0.5 rounded-full"
+                          style={{
+                            color: entry.status === "nouveau" ? COLORS.amber : COLORS.teal,
+                            background: entry.status === "nouveau" ? COLORS.amberDim : COLORS.tealDim,
+                          }}
+                        >
+                          {entry.status}
+                        </span>
+                      </div>
+                      <p className="text-sm mt-1 break-words" style={{ color: COLORS.textDim }}>
+                        {entry.comment}
+                      </p>
+                    </div>
+                    {entry.status === "nouveau" && (
+                      <button
+                        onClick={() => resolveEntry(entry.id)}
+                        className="text-xs px-3 py-1.5 rounded self-center"
+                        style={{ border: `1px solid ${COLORS.panelBorder}`, color: COLORS.textDim }}
+                      >
+                        Marquer traité
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
