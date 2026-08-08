@@ -428,16 +428,193 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
   );
 }
 
-function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail }) {
+function MultiAlertModal({ services, sourceEmail, onClose, onFinish }) {
+  const [comment, setComment] = useState("");
+  const [step, setStep] = useState(0); // 0 = rédaction, 1..n = envoi séquentiel, n+1 = terminé
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (step === 0) textareaRef.current?.focus();
+  }, [step]);
+
+  const current = step >= 1 && step <= services.length ? services[step - 1] : null;
+  const isDone = step === services.length + 1;
+
+  function startSending() {
+    setStep(1);
+  }
+
+  function openCurrentMail() {
+    window.open(buildMailtoUrl(current, comment.trim(), sourceEmail), "_self");
+  }
+
+  function nextStep() {
+    if (step < services.length) {
+      setStep(step + 1);
+    } else {
+      onFinish(comment.trim());
+      setStep(services.length + 1);
+    }
+  }
+
   return (
     <div
-      onClick={() => onOpenDetail(service)}
+      className="fixed inset-0 flex items-center justify-center p-4 z-50"
+      style={{ background: "rgba(0,0,0,0.6)" }}
+      onClick={step === 0 ? onClose : undefined}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded p-6"
+        style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}
+      >
+        {step === 0 && (
+          <>
+            <div
+              className="text-xs uppercase tracking-widest mb-1"
+              style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              Alerte multiple · {services.length} services
+            </div>
+            <h2 className="text-xl font-semibold mb-3" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
+              Alerter {services.map((s) => s.name).join(", ")}
+            </h2>
+            <p className="text-xs mb-4" style={{ color: COLORS.textDim }}>
+              Ce même commentaire sera envoyé séparément à chaque service sélectionné —
+              un e-mail distinct s'ouvrira pour chacun, l'un après l'autre.
+            </p>
+            <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
+              Décrivez le problème rencontré en production
+            </label>
+            <textarea
+              ref={textareaRef}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={5}
+              placeholder="Ex : arrêt du poste 4, capteur ESD hors service…"
+              className="w-full rounded p-3 text-sm mb-4 resize-none focus:outline-none"
+              style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded text-sm"
+                style={{ color: COLORS.textDim, background: "transparent", border: `1px solid ${COLORS.panelBorder}` }}
+              >
+                Annuler
+              </button>
+              <button
+                disabled={!comment.trim()}
+                onClick={startSending}
+                className="px-5 py-2 rounded text-sm font-semibold"
+                style={{
+                  background: comment.trim() ? COLORS.amber : COLORS.amberDim,
+                  color: comment.trim() ? "#1A1300" : COLORS.textDim,
+                  cursor: comment.trim() ? "pointer" : "not-allowed",
+                }}
+              >
+                Commencer l'envoi
+              </button>
+            </div>
+          </>
+        )}
+
+        {current && (
+          <>
+            <div
+              className="text-xs uppercase tracking-widest mb-1"
+              style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              Étape {step} / {services.length}
+            </div>
+            <h2 className="text-xl font-semibold mb-3" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
+              {current.name}
+            </h2>
+            <div
+              className="rounded p-3 mb-4 text-xs"
+              style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              <div>
+                À :{" "}
+                <span style={{ color: COLORS.text }}>
+                  {current.emails.length ? current.emails.join(", ") : "aucun destinataire configuré"}
+                </span>
+              </div>
+            </div>
+            <p className="text-sm mb-5 break-words" style={{ color: COLORS.textDim }}>
+              {comment.trim()}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={openCurrentMail}
+                className="w-full py-2 rounded text-sm font-semibold"
+                style={{ background: COLORS.amber, color: "#1A1300" }}
+              >
+                Ouvrir l'e-mail pour {current.name}
+              </button>
+              <button
+                onClick={nextStep}
+                className="w-full py-2 rounded text-sm"
+                style={{ color: COLORS.text, border: `1px solid ${COLORS.panelBorder}` }}
+              >
+                {step < services.length ? "Envoyé — service suivant →" : "Envoyé — terminer"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {isDone && (
+          <>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
+              Alertes envoyées
+            </h2>
+            <p className="text-sm mb-5" style={{ color: COLORS.textDim }}>
+              {services.length} service{services.length > 1 ? "s ont" : " a"} été alerté{services.length > 1 ? "s" : ""}.
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full py-2 rounded text-sm font-semibold"
+              style={{ background: COLORS.teal, color: "#08201C" }}
+            >
+              Fermer
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail, selectMode, selected, onToggleSelect }) {
+  const handleClick = () => {
+    if (selectMode) onToggleSelect(service.id);
+    else onOpenDetail(service);
+  };
+
+  return (
+    <div
+      onClick={handleClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onOpenDetail(service)}
-      className="rounded-md overflow-hidden flex flex-col cursor-pointer"
-      style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}
+      onKeyDown={(e) => e.key === "Enter" && handleClick()}
+      className="rounded-md overflow-hidden flex flex-col cursor-pointer relative"
+      style={{
+        background: COLORS.panel,
+        border: `1px solid ${selectMode && selected ? COLORS.amber : COLORS.panelBorder}`,
+      }}
     >
+      {selectMode && (
+        <div
+          className="absolute top-3 right-3 w-5 h-5 rounded flex items-center justify-center text-xs font-bold"
+          style={{
+            background: selected ? COLORS.amber : "transparent",
+            border: `1px solid ${selected ? COLORS.amber : COLORS.panelBorder}`,
+            color: "#1A1300",
+          }}
+        >
+          {selected ? "✓" : ""}
+        </div>
+      )}
       <div
         style={{
           height: 4,
@@ -458,7 +635,7 @@ function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail }) {
               {service.name}
             </div>
           </div>
-          <StatusLed active={active} />
+          {!selectMode && <StatusLed active={active} />}
         </div>
 
         <div className="text-sm mb-1" style={{ color: COLORS.textDim }}>
@@ -467,23 +644,27 @@ function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail }) {
             : `${alertCount} alerte${alertCount > 1 ? "s" : ""} envoyée${alertCount > 1 ? "s" : ""}`}
         </div>
         <div className="text-xs mb-4" style={{ color: COLORS.textDim }}>
-          {service.emails.length} destinataire{service.emails.length > 1 ? "s" : ""} · clic pour gérer
+          {selectMode
+            ? "Touchez pour sélectionner"
+            : `${service.emails.length} destinataire${service.emails.length > 1 ? "s" : ""} · clic pour gérer`}
         </div>
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAlert(service);
-          }}
-          className="mt-auto w-full py-2 rounded text-sm font-semibold transition-opacity"
-          style={{
-            background: active ? COLORS.redDim : "transparent",
-            border: `1px solid ${active ? COLORS.red : COLORS.amber}`,
-            color: active ? COLORS.red : COLORS.amber,
-          }}
-        >
-          Alerter
-        </button>
+        {!selectMode && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAlert(service);
+            }}
+            className="mt-auto w-full py-2 rounded text-sm font-semibold transition-opacity"
+            style={{
+              background: active ? COLORS.redDim : "transparent",
+              border: `1px solid ${active ? COLORS.red : COLORS.amber}`,
+              color: active ? COLORS.red : COLORS.amber,
+            }}
+          >
+            Alerter
+          </button>
+        )}
       </div>
     </div>
   );
@@ -498,7 +679,19 @@ export default function App() {
   const [detailService, setDetailService] = useState(null);
   const [showAddService, setShowAddService] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [multiAlertServices, setMultiAlertServices] = useState(null);
   const [toast, setToast] = useState(null);
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds([]);
+  }
 
   // Écoute Firestore en temps réel : toute modification faite depuis
   // n'importe quel appareil est répercutée ici automatiquement.
@@ -588,6 +781,22 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  function handleMultiAlertFinish(comment) {
+    const time = nowLabel();
+    const entries = multiAlertServices.map((s, i) => ({
+      id: Date.now() + i,
+      serviceId: s.id,
+      serviceName: s.name,
+      comment,
+      time,
+      status: "nouveau",
+    }));
+    pushState({ log: [...entries, ...log].slice(0, 200) });
+    setToast(`${multiAlertServices.length} services alertés`);
+    setTimeout(() => setToast(null), 3500);
+    exitSelectMode();
+  }
+
   function resolveEntry(id) {
     const updated = log.map((l) => (l.id === id ? { ...l, status: "traité" } : l));
     pushState({ log: updated });
@@ -629,16 +838,39 @@ export default function App() {
               MEZZANINE UAP03
             </h1>
             <p className="text-sm mt-2" style={{ color: COLORS.textDim }}>
-              Sélectionnez un service pour envoyer une alerte accompagnée d'un commentaire.
+              {selectMode
+                ? `${selectedIds.length} service${selectedIds.length > 1 ? "s" : ""} sélectionné${selectedIds.length > 1 ? "s" : ""}`
+                : "Sélectionnez un service pour envoyer une alerte accompagnée d'un commentaire."}
             </p>
           </div>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="shrink-0 px-3 py-2 rounded text-xs"
-            style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'IBM Plex Mono', monospace" }}
-          >
-            ⚙ Paramètres
-          </button>
+          <div className="flex gap-2 shrink-0">
+            {selectMode ? (
+              <button
+                onClick={exitSelectMode}
+                className="px-3 py-2 rounded text-xs"
+                style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'IBM Plex Mono', monospace" }}
+              >
+                Annuler
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setSelectMode(true)}
+                  className="px-3 py-2 rounded text-xs"
+                  style={{ color: COLORS.amber, border: `1px solid ${COLORS.amber}`, fontFamily: "'IBM Plex Mono', monospace" }}
+                >
+                  ⊞ Alerte multiple
+                </button>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="px-3 py-2 rounded text-xs"
+                  style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'IBM Plex Mono', monospace" }}
+                >
+                  ⚙ Paramètres
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
@@ -650,9 +882,12 @@ export default function App() {
               alertCount={alertsByService(s.id)}
               onAlert={setModalService}
               onOpenDetail={setDetailService}
+              selectMode={selectMode}
+              selected={selectedIds.includes(s.id)}
+              onToggleSelect={toggleSelect}
             />
           ))}
-          <AddServicePanel onClick={() => setShowAddService(true)} />
+          {!selectMode && <AddServicePanel onClick={() => setShowAddService(true)} />}
         </div>
 
         <div>
@@ -719,12 +954,39 @@ export default function App() {
         </div>
       </div>
 
+      {selectMode && selectedIds.length > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-3 rounded-full flex items-center gap-3 z-40"
+          style={{ background: COLORS.panel, border: `1px solid ${COLORS.amber}` }}
+        >
+          <span className="text-sm" style={{ color: COLORS.text }}>
+            {selectedIds.length} sélectionné{selectedIds.length > 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={() => setMultiAlertServices(services.filter((s) => selectedIds.includes(s.id)))}
+            className="px-4 py-1.5 rounded-full text-sm font-semibold"
+            style={{ background: COLORS.amber, color: "#1A1300" }}
+          >
+            Alerter la sélection
+          </button>
+        </div>
+      )}
+
       {modalService && (
         <AlertModal
           service={modalService}
           sourceEmail={sourceEmail}
           onClose={() => setModalService(null)}
           onSend={handleSend}
+        />
+      )}
+
+      {multiAlertServices && (
+        <MultiAlertModal
+          services={multiAlertServices}
+          sourceEmail={sourceEmail}
+          onClose={() => setMultiAlertServices(null)}
+          onFinish={handleMultiAlertFinish}
         />
       )}
 
