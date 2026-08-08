@@ -15,7 +15,7 @@ const COLORS = {
   tealDim: "#1B3934",
 };
 
-const SOURCE_EMAIL = "medamine.1983@gmail.com"; // Adresse source : Production
+const DEFAULT_SOURCE_EMAIL = "medamine.1983@gmail.com"; // Adresse source par défaut : Production
 
 const DEFAULT_SERVICES = [
   { id: "maintenance", name: "Maintenance", code: "MTN", emails: ["maintenance@usine.local"] },
@@ -31,9 +31,9 @@ function nowLabel() {
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function buildMailtoUrl(service, comment) {
+function buildMailtoUrl(service, comment, sourceEmail) {
   const subject = `Alerte production · ${service.name}`;
-  const body = `Bonjour,\n\nLa production signale un problème concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis le tableau d'interchangeabilité (${SOURCE_EMAIL})`;
+  const body = `Bonjour,\n\nLa production signale un problème concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
   const to = service.emails.join(",");
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -54,7 +54,7 @@ function StatusLed({ active }) {
   );
 }
 
-function AlertModal({ service, onClose, onSend }) {
+function AlertModal({ service, sourceEmail, onClose, onSend }) {
   const [comment, setComment] = useState("");
   const textareaRef = useRef(null);
 
@@ -91,7 +91,7 @@ function AlertModal({ service, onClose, onSend }) {
           style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}
         >
           <div>
-            De : <span style={{ color: COLORS.text }}>{SOURCE_EMAIL}</span>
+            De : <span style={{ color: COLORS.text }}>{sourceEmail}</span>
             <span style={{ color: COLORS.textDim }}> (compte par défaut de l'appli mail)</span>
           </div>
           <div className="mt-1">
@@ -130,7 +130,7 @@ function AlertModal({ service, onClose, onSend }) {
             disabled={!comment.trim()}
             onClick={() => {
               const trimmed = comment.trim();
-              window.open(buildMailtoUrl(service, trimmed), "_self");
+              window.open(buildMailtoUrl(service, trimmed, sourceEmail), "_self");
               onSend(trimmed);
             }}
             className="px-5 py-2 rounded text-sm font-semibold"
@@ -255,6 +255,73 @@ function AddServicePanel({ onClick }) {
       </span>
       <span className="text-sm">Ajouter un service</span>
     </button>
+  );
+}
+
+function SettingsModal({ currentEmail, onClose, onSave }) {
+  const [email, setEmail] = useState(currentEmail);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 flex items-center justify-center p-4 z-50"
+      style={{ background: "rgba(0,0,0,0.6)" }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded p-6"
+        style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}
+      >
+        <div
+          className="text-xs uppercase tracking-widest mb-1"
+          style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+        >
+          Paramètres
+        </div>
+        <h2 className="text-xl font-semibold mb-4" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
+          Adresse d'expéditeur
+        </h2>
+
+        <label className="block text-sm mb-1" style={{ color: COLORS.textDim }}>
+          E-mail source (production)
+        </label>
+        <input
+          ref={inputRef}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="nom@usine.local"
+          className="w-full rounded p-2.5 text-sm mb-5 focus:outline-none"
+          style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+        />
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded text-sm"
+            style={{ color: COLORS.textDim, background: "transparent", border: `1px solid ${COLORS.panelBorder}` }}
+          >
+            Annuler
+          </button>
+          <button
+            disabled={!email.trim()}
+            onClick={() => onSave(email.trim())}
+            className="px-5 py-2 rounded text-sm font-semibold"
+            style={{
+              background: email.trim() ? COLORS.amber : COLORS.amberDim,
+              color: email.trim() ? "#1A1300" : COLORS.textDim,
+              cursor: email.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -420,11 +487,20 @@ function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail }) {
 
 export default function App() {
   const [services, setServices] = useState(DEFAULT_SERVICES);
+  const [sourceEmail, setSourceEmail] = useState(DEFAULT_SOURCE_EMAIL);
   const [modalService, setModalService] = useState(null);
   const [detailService, setDetailService] = useState(null);
   const [showAddService, setShowAddService] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [log, setLog] = useState([]); // {id, serviceId, comment, time, status}
   const [toast, setToast] = useState(null);
+
+  function handleSaveSettings(newEmail) {
+    setSourceEmail(newEmail);
+    setShowSettings(false);
+    setToast("Adresse d'expéditeur mise à jour");
+    setTimeout(() => setToast(null), 3000);
+  }
 
   function handleCreateService(newService) {
     setServices((prev) => [...prev, newService]);
@@ -492,22 +568,31 @@ export default function App() {
       `}</style>
 
       <div className="max-w-5xl mx-auto px-5 py-8" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="mb-8">
-          <div
-            className="text-xs uppercase tracking-[0.2em] mb-2"
-            style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
-          >
-            Tableau d'interchangeabilité
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <div
+              className="text-xs uppercase tracking-[0.2em] mb-2"
+              style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              Tableau d'interchangeabilité
+            </div>
+            <h1
+              className="text-3xl sm:text-4xl font-bold"
+              style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}
+            >
+              MEZZANINE UAP03
+            </h1>
+            <p className="text-sm mt-2" style={{ color: COLORS.textDim }}>
+              Sélectionnez un service pour envoyer une alerte accompagnée d'un commentaire.
+            </p>
           </div>
-          <h1
-            className="text-3xl sm:text-4xl font-bold"
-            style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="shrink-0 px-3 py-2 rounded text-xs"
+            style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'IBM Plex Mono', monospace" }}
           >
-            Production ↔ Services support
-          </h1>
-          <p className="text-sm mt-2" style={{ color: COLORS.textDim }}>
-            Sélectionnez un service pour envoyer une alerte accompagnée d'un commentaire.
-          </p>
+            ⚙ Paramètres
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
@@ -589,7 +674,20 @@ export default function App() {
       </div>
 
       {modalService && (
-        <AlertModal service={modalService} onClose={() => setModalService(null)} onSend={handleSend} />
+        <AlertModal
+          service={modalService}
+          sourceEmail={sourceEmail}
+          onClose={() => setModalService(null)}
+          onSend={handleSend}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsModal
+          currentEmail={sourceEmail}
+          onClose={() => setShowSettings(false)}
+          onSave={handleSaveSettings}
+        />
       )}
 
       {showAddService && (
