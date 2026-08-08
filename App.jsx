@@ -428,158 +428,100 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
   );
 }
 
+function buildMultiMailtoUrl(services, comment, sourceEmail) {
+  const names = services.map((s) => s.name).join(", ");
+  const subject = `Alerte production · ${names}`;
+  const body = `Bonjour,\n\nLa production signale un problème concernant : ${names}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
+  const allEmails = [...new Set(services.flatMap((s) => s.emails))];
+  const to = allEmails.join(",");
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 function MultiAlertModal({ services, sourceEmail, onClose, onFinish }) {
   const [comment, setComment] = useState("");
-  const [step, setStep] = useState(0); // 0 = rédaction, 1..n = envoi séquentiel, n+1 = terminé
   const textareaRef = useRef(null);
 
   useEffect(() => {
-    if (step === 0) textareaRef.current?.focus();
-  }, [step]);
+    textareaRef.current?.focus();
+  }, []);
 
-  const current = step >= 1 && step <= services.length ? services[step - 1] : null;
-  const isDone = step === services.length + 1;
+  const allEmails = [...new Set(services.flatMap((s) => s.emails))];
 
-  function startSending() {
-    setStep(1);
-  }
-
-  function openCurrentMail() {
-    window.open(buildMailtoUrl(current, comment.trim(), sourceEmail), "_self");
-  }
-
-  function nextStep() {
-    if (step < services.length) {
-      setStep(step + 1);
-    } else {
-      onFinish(comment.trim());
-      setStep(services.length + 1);
-    }
+  function handleSend() {
+    const trimmed = comment.trim();
+    window.open(buildMultiMailtoUrl(services, trimmed, sourceEmail), "_self");
+    onFinish(trimmed);
   }
 
   return (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 z-50"
       style={{ background: "rgba(0,0,0,0.6)" }}
-      onClick={step === 0 ? onClose : undefined}
+      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md rounded p-6"
         style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}
       >
-        {step === 0 && (
-          <>
-            <div
-              className="text-xs uppercase tracking-widest mb-1"
-              style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
-            >
-              Alerte multiple · {services.length} services
-            </div>
-            <h2 className="text-xl font-semibold mb-3" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
-              Alerter {services.map((s) => s.name).join(", ")}
-            </h2>
-            <p className="text-xs mb-4" style={{ color: COLORS.textDim }}>
-              Ce même commentaire sera envoyé séparément à chaque service sélectionné —
-              un e-mail distinct s'ouvrira pour chacun, l'un après l'autre.
-            </p>
-            <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
-              Décrivez le problème rencontré en production
-            </label>
-            <textarea
-              ref={textareaRef}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={5}
-              placeholder="Ex : arrêt du poste 4, capteur ESD hors service…"
-              className="w-full rounded p-3 text-sm mb-4 resize-none focus:outline-none"
-              style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
-            />
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded text-sm"
-                style={{ color: COLORS.textDim, background: "transparent", border: `1px solid ${COLORS.panelBorder}` }}
-              >
-                Annuler
-              </button>
-              <button
-                disabled={!comment.trim()}
-                onClick={startSending}
-                className="px-5 py-2 rounded text-sm font-semibold"
-                style={{
-                  background: comment.trim() ? COLORS.amber : COLORS.amberDim,
-                  color: comment.trim() ? "#1A1300" : COLORS.textDim,
-                  cursor: comment.trim() ? "pointer" : "not-allowed",
-                }}
-              >
-                Commencer l'envoi
-              </button>
-            </div>
-          </>
-        )}
+        <div
+          className="text-xs uppercase tracking-widest mb-1"
+          style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+        >
+          Alerte multiple · {services.length} services
+        </div>
+        <h2 className="text-xl font-semibold mb-3" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
+          Alerter {services.map((s) => s.name).join(", ")}
+        </h2>
 
-        {current && (
-          <>
-            <div
-              className="text-xs uppercase tracking-widest mb-1"
-              style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
-            >
-              Étape {step} / {services.length}
-            </div>
-            <h2 className="text-xl font-semibold mb-3" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
-              {current.name}
-            </h2>
-            <div
-              className="rounded p-3 mb-4 text-xs"
-              style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}
-            >
-              <div>
-                À :{" "}
-                <span style={{ color: COLORS.text }}>
-                  {current.emails.length ? current.emails.join(", ") : "aucun destinataire configuré"}
-                </span>
-              </div>
-            </div>
-            <p className="text-sm mb-5 break-words" style={{ color: COLORS.textDim }}>
-              {comment.trim()}
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={openCurrentMail}
-                className="w-full py-2 rounded text-sm font-semibold"
-                style={{ background: COLORS.amber, color: "#1A1300" }}
-              >
-                Ouvrir l'e-mail pour {current.name}
-              </button>
-              <button
-                onClick={nextStep}
-                className="w-full py-2 rounded text-sm"
-                style={{ color: COLORS.text, border: `1px solid ${COLORS.panelBorder}` }}
-              >
-                {step < services.length ? "Envoyé — service suivant →" : "Envoyé — terminer"}
-              </button>
-            </div>
-          </>
-        )}
+        <div
+          className="rounded p-3 mb-4 text-xs"
+          style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}
+        >
+          <div>
+            De : <span style={{ color: COLORS.text }}>{sourceEmail}</span>
+          </div>
+          <div className="mt-1">
+            À :{" "}
+            <span style={{ color: COLORS.text }}>
+              {allEmails.length ? allEmails.join(", ") : "aucun destinataire configuré"}
+            </span>
+          </div>
+        </div>
 
-        {isDone && (
-          <>
-            <h2 className="text-xl font-semibold mb-2" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
-              Alertes envoyées
-            </h2>
-            <p className="text-sm mb-5" style={{ color: COLORS.textDim }}>
-              {services.length} service{services.length > 1 ? "s ont" : " a"} été alerté{services.length > 1 ? "s" : ""}.
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full py-2 rounded text-sm font-semibold"
-              style={{ background: COLORS.teal, color: "#08201C" }}
-            >
-              Fermer
-            </button>
-          </>
-        )}
+        <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
+          Décrivez le problème rencontré en production
+        </label>
+        <textarea
+          ref={textareaRef}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={5}
+          placeholder="Ex : arrêt du poste 4, capteur ESD hors service…"
+          className="w-full rounded p-3 text-sm mb-4 resize-none focus:outline-none"
+          style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+        />
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded text-sm"
+            style={{ color: COLORS.textDim, background: "transparent", border: `1px solid ${COLORS.panelBorder}` }}
+          >
+            Annuler
+          </button>
+          <button
+            disabled={!comment.trim()}
+            onClick={handleSend}
+            className="px-5 py-2 rounded text-sm font-semibold"
+            style={{
+              background: comment.trim() ? COLORS.amber : COLORS.amberDim,
+              color: comment.trim() ? "#1A1300" : COLORS.textDim,
+              cursor: comment.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Alerter tout le monde
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -792,8 +734,9 @@ export default function App() {
       status: "nouveau",
     }));
     pushState({ log: [...entries, ...log].slice(0, 200) });
-    setToast(`${multiAlertServices.length} services alertés`);
+    setToast(`Application mail ouverte vers ${multiAlertServices.length} services`);
     setTimeout(() => setToast(null), 3500);
+    setMultiAlertServices(null);
     exitSelectMode();
   }
 
