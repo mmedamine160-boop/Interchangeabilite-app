@@ -1,4 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { db } from "./firebase";
+
+const STATE_DOC = doc(db, "mezzanine", "state");
 
 // ---- Design tokens ----
 const COLORS = {
@@ -488,33 +492,63 @@ function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail }) {
 export default function App() {
   const [services, setServices] = useState(DEFAULT_SERVICES);
   const [sourceEmail, setSourceEmail] = useState(DEFAULT_SOURCE_EMAIL);
+  const [log, setLog] = useState([]); // {id, serviceId, comment, time, status}
+  const [loaded, setLoaded] = useState(false);
   const [modalService, setModalService] = useState(null);
   const [detailService, setDetailService] = useState(null);
   const [showAddService, setShowAddService] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [log, setLog] = useState([]); // {id, serviceId, comment, time, status}
   const [toast, setToast] = useState(null);
 
+  // Écoute Firestore en temps réel : toute modification faite depuis
+  // n'importe quel appareil est répercutée ici automatiquement.
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      STATE_DOC,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setServices(data.services ?? DEFAULT_SERVICES);
+          setSourceEmail(data.sourceEmail ?? DEFAULT_SOURCE_EMAIL);
+          setLog(data.log ?? []);
+        } else {
+          // Premier lancement : on initialise le document partagé
+          setDoc(STATE_DOC, { services: DEFAULT_SERVICES, sourceEmail: DEFAULT_SOURCE_EMAIL, log: [] });
+        }
+        setLoaded(true);
+      },
+      (error) => {
+        console.error("Erreur de synchronisation Firestore :", error);
+        setToast("Connexion à la base partagée impossible");
+        setLoaded(true);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  function pushState(partial) {
+    setDoc(STATE_DOC, { services, sourceEmail, log, ...partial }, { merge: true });
+  }
+
   function handleSaveSettings(newEmail) {
-    setSourceEmail(newEmail);
+    pushState({ sourceEmail: newEmail });
     setShowSettings(false);
     setToast("Adresse d'expéditeur mise à jour");
     setTimeout(() => setToast(null), 3000);
   }
 
   function handleCreateService(newService) {
-    setServices((prev) => [...prev, newService]);
+    pushState({ services: [...services, newService] });
     setShowAddService(false);
     setToast(`Service "${newService.name}" ajouté`);
     setTimeout(() => setToast(null), 3000);
   }
 
   function handleAddEmail(serviceId, email) {
-    setServices((prev) =>
-      prev.map((s) =>
-        s.id === serviceId && !s.emails.includes(email) ? { ...s, emails: [...s.emails, email] } : s
-      )
+    const updated = services.map((s) =>
+      s.id === serviceId && !s.emails.includes(email) ? { ...s, emails: [...s.emails, email] } : s
     );
+    pushState({ services: updated });
     setDetailService((prev) =>
       prev && prev.id === serviceId && !prev.emails.includes(email)
         ? { ...prev, emails: [...prev.emails, email] }
@@ -523,9 +557,10 @@ export default function App() {
   }
 
   function handleRemoveEmail(serviceId, email) {
-    setServices((prev) =>
-      prev.map((s) => (s.id === serviceId ? { ...s, emails: s.emails.filter((e) => e !== email) } : s))
+    const updated = services.map((s) =>
+      s.id === serviceId ? { ...s, emails: s.emails.filter((e) => e !== email) } : s
     );
+    pushState({ services: updated });
     setDetailService((prev) =>
       prev && prev.id === serviceId ? { ...prev, emails: prev.emails.filter((e) => e !== email) } : prev
     );
@@ -543,7 +578,7 @@ export default function App() {
       time: nowLabel(),
       status: "nouveau",
     };
-    setLog((prev) => [entry, ...prev]);
+    pushState({ log: [entry, ...log].slice(0, 200) });
     setToast(
       modalService.emails.length
         ? `Application mail ouverte vers ${modalService.emails.join(", ")}`
@@ -554,7 +589,18 @@ export default function App() {
   }
 
   function resolveEntry(id) {
-    setLog((prev) => prev.map((l) => (l.id === id ? { ...l, status: "traité" } : l)));
+    const updated = log.map((l) => (l.id === id ? { ...l, status: "traité" } : l));
+    pushState({ log: updated });
+  }
+
+  if (!loaded) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center" style={{ background: COLORS.bg }}>
+        <span className="text-sm" style={{ color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>
+          Connexion à la base partagée…
+        </span>
+      </div>
+    );
   }
 
   return (
