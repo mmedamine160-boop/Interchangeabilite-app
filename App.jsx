@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "./firebase";
+import ReportModal from "./Report";
 
 const STATE_DOC = doc(db, "mezzanine", "state");
 
@@ -832,6 +833,7 @@ export default function App() {
   const [detailService, setDetailService] = useState(null);
   const [showAddService, setShowAddService] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [multiAlertServices, setMultiAlertServices] = useState(null);
@@ -1053,6 +1055,13 @@ export default function App() {
                   style={{ color: COLORS.amber, border: `1px solid ${COLORS.amber}`, fontFamily: "'IBM Plex Mono', monospace" }}
                 >
                   ⊞ Alerte multiple
+                </button>
+                <button
+                  onClick={() => setShowReport(true)}
+                  className="px-3 py-2 rounded text-xs"
+                  style={{ color: COLORS.teal, border: `1px solid ${COLORS.teal}`, fontFamily: "'IBM Plex Mono', monospace" }}
+                >
+                  📊 Rapport
                 </button>
                 <button
                   onClick={() => setShowSettings(true)}
@@ -1277,6 +1286,8 @@ export default function App() {
       {showAddService && (
         <AddServiceModal onClose={() => setShowAddService(false)} onCreate={handleCreateService} />
       )}
+
+      {showReport && <ReportModal log={log} onClose={() => setShowReport(false)} />}
 
       {detailService && (
         <ServiceDetailModal
