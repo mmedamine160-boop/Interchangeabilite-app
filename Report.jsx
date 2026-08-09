@@ -113,13 +113,13 @@ export default function ReportModal({ log, onClose }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Détail alertes");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Récap par service");
-    XLSX.writeFile(wb, `rapport-octopus-${mode}-${selectedDate}.xlsx`);
+    XLSX.writeFile(wb, `rapport-decapus-${mode}-${selectedDate}.xlsx`);
   }
 
   function exportPdf() {
     const docPdf = new jsPDF();
     docPdf.setFontSize(14);
-    docPdf.text("OCTOPUS — Rapport d'alertes", 14, 16);
+    docPdf.text("DECAPUS — Rapport d'alertes", 14, 16);
     docPdf.setFontSize(10);
     docPdf.text(rangeLabel, 14, 23);
     docPdf.text(
@@ -148,7 +148,7 @@ export default function ReportModal({ log, onClose }) {
       styles: { fontSize: 8 },
       columnStyles: { 6: { cellWidth: 50 } },
     });
-    docPdf.save(`rapport-octopus-${mode}-${selectedDate}.pdf`);
+    docPdf.save(`rapport-decapus-${mode}-${selectedDate}.pdf`);
   }
 
   return (
