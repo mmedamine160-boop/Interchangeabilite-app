@@ -35,6 +35,15 @@ function nowLabel() {
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function formatDuration(ms) {
+  const totalMinutes = Math.max(0, Math.round(ms / 60000));
+  if (totalMinutes < 1) return "< 1 min";
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
 function buildMailtoUrl(service, comment, sourceEmail, priority = "normal") {
   const prefix = priority === "urgent" ? "🔴 URGENT · " : "";
   const subject = `${prefix}Alerte production · ${service.name}`;
@@ -934,12 +943,14 @@ export default function App() {
   const isActive = (id) => alertsByService(id) > 0;
 
   function handleSend(comment, priority = "normal", channel = "email") {
+    const now = Date.now();
     const entry = {
-      id: Date.now(),
+      id: now,
       serviceId: modalService.id,
       serviceName: modalService.name,
       comment,
       time: nowLabel(),
+      createdAt: now,
       status: "nouveau",
       priority,
       channel,
@@ -957,13 +968,15 @@ export default function App() {
   }
 
   function handleMultiAlertFinish(comment, priority = "normal") {
+    const now = Date.now();
     const time = nowLabel();
     const entries = multiAlertServices.map((s, i) => ({
-      id: Date.now() + i,
+      id: now + i,
       serviceId: s.id,
       serviceName: s.name,
       comment,
       time,
+      createdAt: now + i,
       status: "nouveau",
       priority,
     }));
@@ -975,7 +988,10 @@ export default function App() {
   }
 
   function resolveEntry(id) {
-    const updated = log.map((l) => (l.id === id ? { ...l, status: "traité" } : l));
+    const now = Date.now();
+    const updated = log.map((l) =>
+      l.id === id ? { ...l, status: "traité", resolvedAt: now, resolvedTime: nowLabel() } : l
+    );
     pushState({ log: updated });
   }
 
@@ -1187,6 +1203,15 @@ export default function App() {
                       <p className="text-sm mt-1 break-words" style={{ color: COLORS.textDim }}>
                         {entry.comment}
                       </p>
+                      {entry.status === "traité" && entry.resolvedAt && entry.createdAt && (
+                        <p
+                          className="text-[11px] mt-1"
+                          style={{ color: COLORS.teal, fontFamily: "'IBM Plex Mono', monospace" }}
+                        >
+                          ✓ Résolu à {entry.resolvedTime} — durée d'intervention :{" "}
+                          {formatDuration(entry.resolvedAt - entry.createdAt)}
+                        </p>
+                      )}
                     </div>
                     {entry.status === "nouveau" && (
                       <button
