@@ -45,8 +45,8 @@ function buildMailtoUrl(service, comment, sourceEmail, priority = "normal") {
 
 // WhatsApp (wa.me) ne peut cibler qu'UN SEUL numéro à la fois — on utilise
 // donc toujours le premier numéro de la liste du service.
-function buildWhatsappUrl(service, comment, priority = "normal") {
-  const phone = (service.phones ?? [])[0];
+function buildWhatsappUrl(service, comment, priority = "normal", phoneOverride = null) {
+  const phone = phoneOverride ?? (service.phones ?? [])[0];
   if (!phone) return null;
   const prefix = priority === "urgent" ? "🔴 *URGENT*\n" : "";
   const text = `${prefix}Alerte production — ${service.name}\n\n${comment}\n\n— MEZZANINE UAP03`;
@@ -98,11 +98,72 @@ function PrioritySelector({ priority, onChange }) {
 function AlertModal({ service, sourceEmail, onClose, onSend }) {
   const [comment, setComment] = useState("");
   const [priority, setPriority] = useState("normal");
+  const [waIndex, setWaIndex] = useState(0); // 0 = pas en cours, 1..n = envoi séquentiel WhatsApp
   const textareaRef = useRef(null);
+  const phones = service.phones ?? [];
 
   useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
+    if (waIndex === 0) textareaRef.current?.focus();
+  }, [waIndex]);
+
+  function startWhatsapp() {
+    const trimmed = comment.trim();
+    if (phones.length <= 1) {
+      const url = buildWhatsappUrl(service, trimmed, priority);
+      if (url) window.open(url, "_blank");
+      onSend(trimmed, priority, "whatsapp");
+    } else {
+      setWaIndex(1);
+    }
+  }
+
+  function openWaStep() {
+    const trimmed = comment.trim();
+    const url = buildWhatsappUrl(service, trimmed, priority, phones[waIndex - 1]);
+    if (url) window.open(url, "_blank");
+  }
+
+  function nextWaStep() {
+    if (waIndex < phones.length) {
+      setWaIndex(waIndex + 1);
+    } else {
+      onSend(comment.trim(), priority, "whatsapp");
+    }
+  }
+
+  if (waIndex > 0) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center p-4 z-50" style={{ background: "rgba(0,0,0,0.6)" }}>
+        <div className="w-full max-w-md rounded p-6" style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}>
+          <div className="text-xs uppercase tracking-widest mb-1" style={{ color: "#25D366", fontFamily: "'IBM Plex Mono', monospace" }}>
+            WhatsApp · numéro {waIndex} / {phones.length}
+          </div>
+          <h2 className="text-xl font-semibold mb-3" style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}>
+            {phones[waIndex - 1]}
+          </h2>
+          <p className="text-sm mb-5 break-words" style={{ color: COLORS.textDim }}>
+            {comment.trim()}
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={openWaStep}
+              className="w-full py-2.5 rounded text-sm font-semibold"
+              style={{ background: "#25D366", color: "#08201C" }}
+            >
+              Ouvrir WhatsApp pour ce numéro
+            </button>
+            <button
+              onClick={nextWaStep}
+              className="w-full py-2.5 rounded text-sm"
+              style={{ color: COLORS.text, border: `1px solid ${COLORS.panelBorder}` }}
+            >
+              {waIndex < phones.length ? "Envoyé — numéro suivant →" : "Envoyé — terminer"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -144,7 +205,7 @@ function AlertModal({ service, sourceEmail, onClose, onSend }) {
           <div className="mt-1">
             💬 WhatsApp :{" "}
             <span style={{ color: COLORS.text }}>
-              {(service.phones ?? []).length ? service.phones[0] : "aucun"}
+              {phones.length ? `${phones.join(", ")}${phones.length > 1 ? " (envoi séquentiel)" : ""}` : "aucun"}
             </span>
           </div>
         </div>
@@ -192,21 +253,16 @@ function AlertModal({ service, sourceEmail, onClose, onSend }) {
             📧 Alerter par e-mail
           </button>
           <button
-            disabled={!comment.trim() || !(service.phones ?? []).length}
-            onClick={() => {
-              const trimmed = comment.trim();
-              const url = buildWhatsappUrl(service, trimmed, priority);
-              if (url) window.open(url, "_blank");
-              onSend(trimmed, priority, "whatsapp");
-            }}
+            disabled={!comment.trim() || !phones.length}
+            onClick={startWhatsapp}
             className="w-full py-2.5 rounded text-sm font-semibold"
             style={{
-              background: comment.trim() && (service.phones ?? []).length ? "#25D366" : COLORS.tealDim,
-              color: comment.trim() && (service.phones ?? []).length ? "#08201C" : COLORS.textDim,
-              cursor: comment.trim() && (service.phones ?? []).length ? "pointer" : "not-allowed",
+              background: comment.trim() && phones.length ? "#25D366" : COLORS.tealDim,
+              color: comment.trim() && phones.length ? "#08201C" : COLORS.textDim,
+              cursor: comment.trim() && phones.length ? "pointer" : "not-allowed",
             }}
           >
-            💬 Alerter par WhatsApp
+            💬 Alerter par WhatsApp{phones.length > 1 ? ` (${phones.length} numéros)` : ""}
           </button>
         </div>
 
