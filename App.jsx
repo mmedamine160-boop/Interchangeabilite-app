@@ -22,12 +22,12 @@ const COLORS = {
 const DEFAULT_SOURCE_EMAIL = "medamine.1983@gmail.com"; // Adresse source par défaut : Production
 
 const DEFAULT_SERVICES = [
-  { id: "maintenance", name: "Maintenance", code: "MTN", emails: ["maintenance@usine.local"] },
-  { id: "qualite", name: "Qualité", code: "QLT", emails: ["qualite@usine.local"] },
-  { id: "logistique", name: "Logistique", code: "LOG", emails: ["logistique@usine.local"] },
-  { id: "methodes", name: "Méthodes", code: "MTH", emails: ["methodes@usine.local"] },
-  { id: "informatique", name: "Informatique", code: "INF", emails: ["informatique@usine.local"] },
-  { id: "rh", name: "Ressources Humaines", code: "RH", emails: ["rh@usine.local"] },
+  { id: "maintenance", name: "Maintenance", code: "MTN", emails: ["maintenance@usine.local"], phones: [] },
+  { id: "qualite", name: "Qualité", code: "QLT", emails: ["qualite@usine.local"], phones: [] },
+  { id: "logistique", name: "Logistique", code: "LOG", emails: ["logistique@usine.local"], phones: [] },
+  { id: "methodes", name: "Méthodes", code: "MTH", emails: ["methodes@usine.local"], phones: [] },
+  { id: "informatique", name: "Informatique", code: "INF", emails: ["informatique@usine.local"], phones: [] },
+  { id: "rh", name: "Ressources Humaines", code: "RH", emails: ["rh@usine.local"], phones: [] },
 ];
 
 function nowLabel() {
@@ -41,6 +41,17 @@ function buildMailtoUrl(service, comment, sourceEmail, priority = "normal") {
   const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis MEZZANINE UAP03 (${sourceEmail})`;
   const to = service.emails.join(",");
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+// WhatsApp (wa.me) ne peut cibler qu'UN SEUL numéro à la fois — on utilise
+// donc toujours le premier numéro de la liste du service.
+function buildWhatsappUrl(service, comment, priority = "normal") {
+  const phone = (service.phones ?? [])[0];
+  if (!phone) return null;
+  const prefix = priority === "urgent" ? "🔴 *URGENT*\n" : "";
+  const text = `${prefix}Alerte production — ${service.name}\n\n${comment}\n\n— MEZZANINE UAP03`;
+  const digitsOnly = phone.replace(/[^\d+]/g, "");
+  return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(text)}`;
 }
 
 function StatusLed({ active }) {
@@ -123,12 +134,17 @@ function AlertModal({ service, sourceEmail, onClose, onSend }) {
         >
           <div>
             De : <span style={{ color: COLORS.text }}>{sourceEmail}</span>
-            <span style={{ color: COLORS.textDim }}> (compte par défaut de l'appli mail)</span>
           </div>
           <div className="mt-1">
-            À :{" "}
+            ✉ E-mail :{" "}
             <span style={{ color: COLORS.text }}>
-              {service.emails.length ? service.emails.join(", ") : "aucun destinataire configuré"}
+              {service.emails.length ? service.emails.join(", ") : "aucun"}
+            </span>
+          </div>
+          <div className="mt-1">
+            💬 WhatsApp :{" "}
+            <span style={{ color: COLORS.text }}>
+              {(service.phones ?? []).length ? service.phones[0] : "aucun"}
             </span>
           </div>
         </div>
@@ -154,29 +170,53 @@ function AlertModal({ service, sourceEmail, onClose, onSend }) {
             color: COLORS.text,
           }}
         />
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded text-sm"
-            style={{ color: COLORS.textDim, background: "transparent", border: `1px solid ${COLORS.panelBorder}` }}
-          >
-            Annuler
-          </button>
+
+        <label className="block text-sm mb-2" style={{ color: COLORS.textDim }}>
+          Choisir le canal d'alerte
+        </label>
+        <div className="flex flex-col gap-2 mb-4">
           <button
             disabled={!comment.trim()}
             onClick={() => {
               const trimmed = comment.trim();
               window.open(buildMailtoUrl(service, trimmed, sourceEmail, priority), "_self");
-              onSend(trimmed, priority);
+              onSend(trimmed, priority, "email");
             }}
-            className="px-5 py-2 rounded text-sm font-semibold"
+            className="w-full py-2.5 rounded text-sm font-semibold"
             style={{
               background: comment.trim() ? COLORS.amber : COLORS.amberDim,
               color: comment.trim() ? "#1A1300" : COLORS.textDim,
               cursor: comment.trim() ? "pointer" : "not-allowed",
             }}
           >
-            Alerter
+            📧 Alerter par e-mail
+          </button>
+          <button
+            disabled={!comment.trim() || !(service.phones ?? []).length}
+            onClick={() => {
+              const trimmed = comment.trim();
+              const url = buildWhatsappUrl(service, trimmed, priority);
+              if (url) window.open(url, "_blank");
+              onSend(trimmed, priority, "whatsapp");
+            }}
+            className="w-full py-2.5 rounded text-sm font-semibold"
+            style={{
+              background: comment.trim() && (service.phones ?? []).length ? "#25D366" : COLORS.tealDim,
+              color: comment.trim() && (service.phones ?? []).length ? "#08201C" : COLORS.textDim,
+              cursor: comment.trim() && (service.phones ?? []).length ? "pointer" : "not-allowed",
+            }}
+          >
+            💬 Alerter par WhatsApp
+          </button>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded text-sm"
+            style={{ color: COLORS.textDim, background: "transparent", border: `1px solid ${COLORS.panelBorder}` }}
+          >
+            Fermer
           </button>
         </div>
       </div>
@@ -262,7 +302,7 @@ function AddServiceModal({ onClose, onCreate }) {
           <button
             disabled={!canCreate}
             onClick={() =>
-              onCreate({ id: `${code.trim().toLowerCase()}-${Date.now()}`, name: name.trim(), code: code.trim(), emails: [email.trim()] })
+              onCreate({ id: `${code.trim().toLowerCase()}-${Date.now()}`, name: name.trim(), code: code.trim(), emails: [email.trim()], phones: [] })
             }
             className="px-5 py-2 rounded text-sm font-semibold"
             style={{
@@ -361,8 +401,9 @@ function SettingsModal({ currentEmail, onClose, onSave }) {
   );
 }
 
-function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
+function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail, onAddPhone, onRemovePhone }) {
   const [newEmail, setNewEmail] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const inputRef = useRef(null);
 
   function submitEmail() {
@@ -373,6 +414,13 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
     inputRef.current?.focus();
   }
 
+  function submitPhone() {
+    const trimmed = newPhone.trim();
+    if (!trimmed) return;
+    onAddPhone(service.id, trimmed);
+    setNewPhone("");
+  }
+
   return (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 z-50"
@@ -381,7 +429,7 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded p-6"
+        className="w-full max-w-md rounded p-6 max-h-[85vh] overflow-y-auto"
         style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}
       >
         <div
@@ -394,10 +442,13 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
           {service.name} — destinataires
         </h2>
 
-        <div className="flex flex-col gap-2 mb-4">
+        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: COLORS.amber }}>
+          ✉ E-mails
+        </div>
+        <div className="flex flex-col gap-2 mb-3">
           {service.emails.length === 0 ? (
             <p className="text-sm" style={{ color: COLORS.textDim }}>
-              Aucun destinataire configuré.
+              Aucun e-mail configuré.
             </p>
           ) : (
             service.emails.map((email) => (
@@ -418,11 +469,7 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
             ))
           )}
         </div>
-
-        <label className="block text-sm mb-1" style={{ color: COLORS.textDim }}>
-          Ajouter un destinataire
-        </label>
-        <div className="flex gap-2 mb-5">
+        <div className="flex gap-2 mb-6">
           <input
             ref={inputRef}
             value={newEmail}
@@ -445,6 +492,66 @@ function ServiceDetailModal({ service, onClose, onAddEmail, onRemoveEmail }) {
             Ajouter
           </button>
         </div>
+
+        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: "#25D366" }}>
+          💬 WhatsApp
+        </div>
+        {(service.phones ?? []).length > 1 && (
+          <p className="text-[11px] mb-2" style={{ color: COLORS.textDim }}>
+            WhatsApp ne peut cibler qu'un seul numéro à la fois — le premier de la liste sera utilisé.
+          </p>
+        )}
+        <div className="flex flex-col gap-2 mb-3">
+          {(service.phones ?? []).length === 0 ? (
+            <p className="text-sm" style={{ color: COLORS.textDim }}>
+              Aucun numéro configuré.
+            </p>
+          ) : (
+            (service.phones ?? []).map((phone, i) => (
+              <div
+                key={phone}
+                className="flex items-center justify-between rounded px-3 py-2 text-sm"
+                style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+              >
+                <span className="truncate">
+                  {phone} {i === 0 && <span style={{ color: "#25D366" }}>· principal</span>}
+                </span>
+                <button
+                  onClick={() => onRemovePhone(service.id, phone)}
+                  className="text-xs px-2 py-1 rounded ml-2 shrink-0"
+                  style={{ color: COLORS.red, border: `1px solid ${COLORS.redDim}` }}
+                >
+                  Supprimer
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex gap-2 mb-5">
+          <input
+            value={newPhone}
+            onChange={(e) => setNewPhone(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submitPhone()}
+            placeholder="+212600000000"
+            className="flex-1 min-w-0 rounded p-2.5 text-sm focus:outline-none"
+            style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+          />
+          <button
+            onClick={submitPhone}
+            disabled={!newPhone.trim()}
+            className="px-4 rounded text-sm font-semibold shrink-0"
+            style={{
+              background: newPhone.trim() ? "#25D366" : COLORS.tealDim,
+              color: newPhone.trim() ? "#08201C" : COLORS.textDim,
+              cursor: newPhone.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Ajouter
+          </button>
+        </div>
+        <p className="text-[11px] mb-5" style={{ color: COLORS.textDim }}>
+          Format international requis, ex : +212600000000 (indicatif pays + numéro, sans espaces).
+        </p>
 
         <div className="flex justify-end">
           <button
@@ -743,10 +850,34 @@ export default function App() {
     );
   }
 
+  function handleAddPhone(serviceId, phone) {
+    const updated = services.map((s) => {
+      if (s.id !== serviceId) return s;
+      const phones = s.phones ?? [];
+      return phones.includes(phone) ? s : { ...s, phones: [...phones, phone] };
+    });
+    pushState({ services: updated });
+    setDetailService((prev) => {
+      if (!prev || prev.id !== serviceId) return prev;
+      const phones = prev.phones ?? [];
+      return phones.includes(phone) ? prev : { ...prev, phones: [...phones, phone] };
+    });
+  }
+
+  function handleRemovePhone(serviceId, phone) {
+    const updated = services.map((s) =>
+      s.id === serviceId ? { ...s, phones: (s.phones ?? []).filter((p) => p !== phone) } : s
+    );
+    pushState({ services: updated });
+    setDetailService((prev) =>
+      prev && prev.id === serviceId ? { ...prev, phones: (prev.phones ?? []).filter((p) => p !== phone) } : prev
+    );
+  }
+
   const alertsByService = (id) => log.filter((l) => l.serviceId === id && l.status === "nouveau").length;
   const isActive = (id) => alertsByService(id) > 0;
 
-  function handleSend(comment, priority = "normal") {
+  function handleSend(comment, priority = "normal", channel = "email") {
     const entry = {
       id: Date.now(),
       serviceId: modalService.id,
@@ -755,10 +886,13 @@ export default function App() {
       time: nowLabel(),
       status: "nouveau",
       priority,
+      channel,
     };
     pushState({ log: [entry, ...log].slice(0, 200) });
     setToast(
-      modalService.emails.length
+      channel === "whatsapp"
+        ? `WhatsApp ouvert vers ${(modalService.phones ?? [])[0] ?? ""}`
+        : modalService.emails.length
         ? `Application mail ouverte vers ${modalService.emails.join(", ")}`
         : "Alerte enregistrée (aucun destinataire configuré)"
     );
@@ -1069,6 +1203,8 @@ export default function App() {
           onClose={() => setDetailService(null)}
           onAddEmail={handleAddEmail}
           onRemoveEmail={handleRemoveEmail}
+          onAddPhone={handleAddPhone}
+          onRemovePhone={handleRemovePhone}
         />
       )}
 
