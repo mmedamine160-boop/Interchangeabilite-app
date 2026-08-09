@@ -48,7 +48,7 @@ function formatDuration(ms) {
 function buildMailtoUrl(service, comment, sourceEmail, priority = "normal") {
   const prefix = priority === "urgent" ? "🔴 URGENT · " : "";
   const subject = `${prefix}Alerte production · ${service.name}`;
-  const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis OCTOPUS (${sourceEmail})`;
+  const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${service.name}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis DECAPUS (${sourceEmail})`;
   const to = service.emails.join(",");
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -59,7 +59,7 @@ function buildWhatsappUrl(service, comment, priority = "normal", phoneOverride =
   const phone = phoneOverride ?? (service.phones ?? [])[0];
   if (!phone) return null;
   const prefix = priority === "urgent" ? "🔴 *URGENT*\n" : "";
-  const text = `${prefix}Alerte production — ${service.name}\n\n${comment}\n\n— OCTOPUS`;
+  const text = `${prefix}Alerte production — ${service.name}\n\n${comment}\n\n— DECAPUS`;
   const digitsOnly = phone.replace(/[^\d+]/g, "");
   return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(text)}`;
 }
@@ -637,7 +637,7 @@ function buildMultiMailtoUrl(services, comment, sourceEmail, priority = "normal"
   const names = services.map((s) => s.name).join(", ");
   const prefix = priority === "urgent" ? "🔴 URGENT · " : "";
   const subject = `${prefix}Alerte production · ${names}`;
-  const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${names}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis OCTOPUS (${sourceEmail})`;
+  const body = `Bonjour,\n\nLa production signale un problème ${priority === "urgent" ? "URGENT " : ""}concernant : ${names}.\n\nCommentaire :\n${comment}\n\n— Envoyé depuis DECAPUS (${sourceEmail})`;
   const allEmails = [...new Set(services.flatMap((s) => s.emails))];
   const to = allEmails.join(",");
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -1030,7 +1030,7 @@ export default function App() {
               className="text-3xl sm:text-4xl font-bold"
               style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}
             >
-              OCTOPUS
+              DECAPUS
             </h1>
             <p className="text-sm mt-2" style={{ color: COLORS.textDim }}>
               {selectMode
