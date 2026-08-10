@@ -88,18 +88,18 @@ export default function Login() {
               />
             </div>
           </div>
-          <div
-            className="text-xs uppercase tracking-[0.2em] mb-2"
-            style={{ color: C.amber, fontFamily: "'IBM Plex Mono', monospace" }}
-          >
-            Connexion
-          </div>
           <h1
-            className="text-4xl font-bold"
+            className="text-4xl font-bold mb-2"
             style={{ color: C.text, fontFamily: "'Barlow Condensed', sans-serif" }}
           >
             DECAPUS
           </h1>
+          <div
+            className="text-xs uppercase tracking-[0.2em]"
+            style={{ color: C.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+          >
+            Connexion
+          </div>
         </div>
 
         <form
