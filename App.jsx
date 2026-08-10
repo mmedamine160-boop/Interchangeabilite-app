@@ -1,11 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth } from "./firebase";
 import ReportModal from "./Report";
 import Login from "./Login";
-
-const STATE_DOC = doc(db, "mezzanine", "state");
 
 // ---- Design tokens ----
 const COLORS = {
@@ -45,6 +43,17 @@ function formatDuration(ms) {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+function slugifyTenantId(name) {
+  const base = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // retire les accents
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return `${base || "usine"}-${suffix}`;
 }
 
 function buildMailtoUrl(service, comment, sourceEmail, priority = "normal") {
@@ -826,9 +835,86 @@ function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail, sele
   );
 }
 
+function SetupTenant({ onCreate, onLogout, checkingLegacy }) {
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleCreate() {
+    if (!name.trim()) return;
+    setCreating(true);
+    await onCreate(name.trim());
+  }
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center p-4" style={{ background: COLORS.bg }}>
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <div
+            className="text-xs uppercase tracking-[0.2em] mb-2"
+            style={{ color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace" }}
+          >
+            Bienvenue
+          </div>
+          <h1
+            className="text-3xl font-bold"
+            style={{ color: COLORS.text, fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Configurer ton espace
+          </h1>
+          <p className="text-sm mt-2" style={{ color: COLORS.textDim }}>
+            Ton compte n'est encore rattaché à aucune usine. Donne un nom à ton espace pour commencer —
+            {checkingLegacy ? " tes données existantes seront reprises automatiquement." : ""}
+          </p>
+        </div>
+
+        <div className="rounded-md p-6" style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}` }}>
+          <label className="block text-sm mb-1" style={{ color: COLORS.textDim }}>
+            Nom de l'usine / du site
+          </label>
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex : Usine Saint-Vulbas"
+            className="w-full rounded p-2.5 text-sm mb-4 focus:outline-none"
+            style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text }}
+          />
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || creating}
+            className="w-full py-2.5 rounded text-sm font-semibold"
+            style={{
+              background: name.trim() && !creating ? COLORS.amber : COLORS.amberDim,
+              color: name.trim() && !creating ? "#1A1300" : COLORS.textDim,
+              cursor: name.trim() && !creating ? "pointer" : "not-allowed",
+            }}
+          >
+            {creating ? "Création…" : "Créer mon espace"}
+          </button>
+        </div>
+
+        <button
+          onClick={onLogout}
+          className="w-full mt-4 py-2 rounded text-xs"
+          style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}` }}
+        >
+          Déconnexion
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [tenantId, setTenantId] = useState(null);
+  const [tenantStatus, setTenantStatus] = useState("checking"); // checking | found | needs-setup | error
   const [services, setServices] = useState(DEFAULT_SERVICES);
   const [sourceEmail, setSourceEmail] = useState(DEFAULT_SOURCE_EMAIL);
   const [log, setLog] = useState([]); // {id, serviceId, comment, time, status}
@@ -864,13 +950,69 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Écoute Firestore en temps réel : toute modification faite depuis
-  // n'importe quel appareil est répercutée ici automatiquement.
-  // Ne démarre qu'une fois l'utilisateur authentifié.
+  // Une fois connecté, on cherche à quelle usine (tenant) ce compte appartient.
   useEffect(() => {
     if (!authUser) return;
+    setTenantStatus("checking");
+    getDoc(doc(db, "users", authUser.uid))
+      .then((snap) => {
+        if (snap.exists() && snap.data().tenantId) {
+          setTenantId(snap.data().tenantId);
+          setTenantStatus("found");
+        } else {
+          setTenantStatus("needs-setup");
+        }
+      })
+      .catch((error) => {
+        console.error("Erreur de résolution du compte :", error);
+        setTenantStatus("error");
+      });
+  }, [authUser]);
+
+  // Création du premier espace (usine) pour un compte qui n'en a pas encore.
+  // Reprend automatiquement les anciennes données partagées si elles existent
+  // (compatibilité avec la période avant le multi-usines).
+  async function handleCreateTenant(factoryName) {
+    if (!authUser) return;
+    const newTenantId = slugifyTenantId(factoryName);
+
+    let initialData = { services: DEFAULT_SERVICES, sourceEmail: DEFAULT_SOURCE_EMAIL, log: [] };
+    try {
+      const legacySnap = await getDoc(doc(db, "mezzanine", "state"));
+      if (legacySnap.exists()) {
+        const legacy = legacySnap.data();
+        initialData = {
+          services: legacy.services ?? DEFAULT_SERVICES,
+          sourceEmail: legacy.sourceEmail ?? DEFAULT_SOURCE_EMAIL,
+          log: legacy.log ?? [],
+        };
+      }
+    } catch (e) {
+      // Pas grave si l'ancien document n'est pas lisible : on démarre avec les valeurs par défaut.
+    }
+
+    // Ordre important : on écrit d'abord le rattachement utilisateur → usine,
+    // puis le document de l'usine (les règles de sécurité l'exigent dans cet ordre).
+    await setDoc(doc(db, "users", authUser.uid), {
+      tenantId: newTenantId,
+      email: authUser.email,
+      role: "admin",
+      createdAt: Date.now(),
+    });
+    await setDoc(doc(db, "tenants", newTenantId), { ...initialData, factoryName });
+
+    setTenantId(newTenantId);
+    setTenantStatus("found");
+  }
+
+  // Écoute Firestore en temps réel : toute modification faite depuis
+  // n'importe quel appareil est répercutée ici automatiquement.
+  // Ne démarre qu'une fois l'usine (tenant) identifiée.
+  useEffect(() => {
+    if (!tenantId) return;
+    const tenantDoc = doc(db, "tenants", tenantId);
     const unsubscribe = onSnapshot(
-      STATE_DOC,
+      tenantDoc,
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
@@ -878,8 +1020,7 @@ export default function App() {
           setSourceEmail(data.sourceEmail ?? DEFAULT_SOURCE_EMAIL);
           setLog(data.log ?? []);
         } else {
-          // Premier lancement : on initialise le document partagé
-          setDoc(STATE_DOC, { services: DEFAULT_SERVICES, sourceEmail: DEFAULT_SOURCE_EMAIL, log: [] });
+          setDoc(tenantDoc, { services: DEFAULT_SERVICES, sourceEmail: DEFAULT_SOURCE_EMAIL, log: [] });
         }
         setLoaded(true);
       },
@@ -890,15 +1031,18 @@ export default function App() {
       }
     );
     return () => unsubscribe();
-  }, [authUser]);
+  }, [tenantId]);
 
   function handleLogout() {
     signOut(auth);
     setLoaded(false);
+    setTenantId(null);
+    setTenantStatus("checking");
   }
 
   function pushState(partial) {
-    setDoc(STATE_DOC, { services, sourceEmail, log, ...partial }, { merge: true });
+    if (!tenantId) return;
+    setDoc(doc(db, "tenants", tenantId), { services, sourceEmail, log, ...partial }, { merge: true });
   }
 
   function handleSaveSettings(newEmail) {
@@ -1029,6 +1173,37 @@ export default function App() {
 
   if (!authUser) {
     return <Login />;
+  }
+
+  if (tenantStatus === "checking") {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center" style={{ background: COLORS.bg }}>
+        <span className="text-sm" style={{ color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>
+          Vérification de ton compte…
+        </span>
+      </div>
+    );
+  }
+
+  if (tenantStatus === "error") {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center gap-4 p-4" style={{ background: COLORS.bg }}>
+        <span className="text-sm text-center" style={{ color: COLORS.red, fontFamily: "'IBM Plex Mono', monospace" }}>
+          Impossible de vérifier ton compte. Vérifie ta connexion internet et réessaie.
+        </span>
+        <button
+          onClick={handleLogout}
+          className="px-4 py-2 rounded text-xs"
+          style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}` }}
+        >
+          Déconnexion
+        </button>
+      </div>
+    );
+  }
+
+  if (tenantStatus === "needs-setup") {
+    return <SetupTenant onCreate={handleCreateTenant} onLogout={handleLogout} checkingLegacy />;
   }
 
   if (!loaded) {
