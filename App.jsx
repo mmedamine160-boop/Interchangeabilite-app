@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { db, auth } from "./firebase";
 import ReportModal from "./Report";
+import Login from "./Login";
 
 const STATE_DOC = doc(db, "mezzanine", "state");
 
@@ -825,6 +827,8 @@ function ServicePanel({ service, active, alertCount, onAlert, onOpenDetail, sele
 }
 
 export default function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [services, setServices] = useState(DEFAULT_SERVICES);
   const [sourceEmail, setSourceEmail] = useState(DEFAULT_SOURCE_EMAIL);
   const [log, setLog] = useState([]); // {id, serviceId, comment, time, status}
@@ -851,9 +855,20 @@ export default function App() {
     setSelectedIds([]);
   }
 
+  // Écoute l'état de connexion Firebase (persiste entre les sessions)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setAuthChecked(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Écoute Firestore en temps réel : toute modification faite depuis
   // n'importe quel appareil est répercutée ici automatiquement.
+  // Ne démarre qu'une fois l'utilisateur authentifié.
   useEffect(() => {
+    if (!authUser) return;
     const unsubscribe = onSnapshot(
       STATE_DOC,
       (snap) => {
@@ -875,7 +890,12 @@ export default function App() {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [authUser]);
+
+  function handleLogout() {
+    signOut(auth);
+    setLoaded(false);
+  }
 
   function pushState(partial) {
     setDoc(STATE_DOC, { services, sourceEmail, log, ...partial }, { merge: true });
@@ -997,6 +1017,20 @@ export default function App() {
     pushState({ log: updated });
   }
 
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center" style={{ background: COLORS.bg }}>
+        <span className="text-sm" style={{ color: COLORS.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>
+          Vérification de la connexion…
+        </span>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <Login />;
+  }
+
   if (!loaded) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center" style={{ background: COLORS.bg }}>
@@ -1069,6 +1103,13 @@ export default function App() {
                   style={{ color: COLORS.textDim, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'IBM Plex Mono', monospace" }}
                 >
                   ⚙ Paramètres
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="px-3 py-2 rounded text-xs"
+                  style={{ color: COLORS.red, border: `1px solid ${COLORS.redDim}`, fontFamily: "'IBM Plex Mono', monospace" }}
+                >
+                  ⏻ Déconnexion
                 </button>
               </>
             )}
