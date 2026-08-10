@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "./firebase";
+import logoImg from "./decapus-logo.png";
 
 const C = {
   bg: "#12161A",
@@ -81,7 +82,7 @@ export default function Login() {
               }}
             >
               <img
-                src="/decapus-logo.png"
+                src={logoImg}
                 alt="DECAPUS"
                 style={{ width: "88%", height: "88%", objectFit: "contain" }}
               />
