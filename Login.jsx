@@ -70,21 +70,21 @@ export default function Login() {
           <div className="flex justify-center mb-3">
             <div
               style={{
-                width: 130,
-                height: 130,
-                borderRadius: "50%",
-                background: "#F4EDE0",
+                width: 110,
+                height: 110,
+                borderRadius: 20,
+                background: C.panel,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 overflow: "hidden",
-                border: `2px solid ${C.amber}`,
+                border: `1px solid ${C.panelBorder}`,
               }}
             >
               <img
                 src={logoImg}
                 alt="DECAPUS"
-                style={{ width: "88%", height: "88%", objectFit: "contain" }}
+                style={{ width: "80%", height: "80%", objectFit: "contain" }}
               />
             </div>
           </div>
