@@ -67,11 +67,25 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="flex justify-center mb-3">
-            <img
-              src="/decapus-logo.png"
-              alt="DECAPUS"
-              style={{ width: 120, height: 120, objectFit: "contain", borderRadius: "50%" }}
-            />
+            <div
+              style={{
+                width: 130,
+                height: 130,
+                borderRadius: "50%",
+                background: "#F4EDE0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                border: `2px solid ${C.amber}`,
+              }}
+            >
+              <img
+                src="/decapus-logo.png"
+                alt="DECAPUS"
+                style={{ width: "88%", height: "88%", objectFit: "contain" }}
+              />
+            </div>
           </div>
           <div
             className="text-xs uppercase tracking-[0.2em] mb-2"
